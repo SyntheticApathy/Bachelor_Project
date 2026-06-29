@@ -3,4 +3,5 @@
 This repo contains the following files: 
 - rules.rls :: Datalog Rules
 - Chess_Ontolog.owl :: TBox
-- prompts/agentX.txt :: Prompt for agent X
+- /prompts/agentX.txt :: Prompt for agent X
+- /results :: Results of Evaluation
