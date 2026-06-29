@@ -1,0 +1,682 @@
+%%%%%%%% ABox
+
+%Import rows and columns
+@import row :- csv{resource="board_state/rows.csv", format=(string,string,string,string,string,string,string,string,int)} .
+@import col :- csv{resource="board_state/files.csv", format=(string,string,string,string,string,string,string,string,int)} . 
+
+%Import position ID
+@parameter $pos_id .
+pos_id($pos_id) .
+
+%%% Import board info from FEN
+@parameter $player_move .
+curr_player_move($player_move) .
+
+@parameter $castling_rights .
+castle_rights($castling_rights) .
+
+@parameter $enpassant .
+en_passant_square($enpassant).
+
+@parameter $halfmove .
+halfmoves($halfmove) .
+
+@parameter $fullmove .
+fullmove($fullmove) .
+
+% Set piece values
+pawn("P") . pawn("p") .
+bishop("B") . bishop("b") .
+knight("N") . knight("n") .
+rook("R") . rook("r") .
+queen("Q") . queen("q") .
+king("K") . king("k") .
+
+% White pieces
+is_white("P") . is_white("N") . is_white("B") . is_white("R") . is_white("Q") . is_white("K") .
+% Black pieces
+is_black("p") . is_black("n") . is_black("b") . is_black("r") . is_black("q") . is_black("k") .
+
+% Helper to identify sliding pieces (for pins and blocking checks)
+slider(?p) :- rook(?p) .
+slider(?p) :- bishop(?p) .
+slider(?p) :- queen(?p) .
+
+% Square( piece, rank, file)
+square(?a, ?rank, 1) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h, ?rank) .
+square(?b, ?rank, 2) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h, ?rank) .
+square(?c, ?rank, 3) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h, ?rank) .
+square(?d, ?rank, 4) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h, ?rank) .
+square(?e, ?rank, 5) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h, ?rank) .
+square(?f, ?rank, 6) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h, ?rank) .
+square(?g, ?rank, 7) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h, ?rank) .
+square(?h, ?rank, 8) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h, ?rank) .
+
+% A square is occupied if it contains a valid White or Black piece.
+occupied(?r, ?f) :- square(?p, ?r, ?f), is_white(?p) .
+occupied(?r, ?f) :- square(?p, ?r, ?f), is_black(?p) .
+
+%----------------
+% CLOSED AND OPEN RANKS & FILES
+rank(?x) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h, ?x) .
+closedrank(?rank) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h,?rank) , pawn(?a) .
+closedrank(?rank) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h,?rank) , pawn(?b) .
+closedrank(?rank) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h,?rank) , pawn(?c) .
+closedrank(?rank) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h,?rank) , pawn(?e) .
+closedrank(?rank) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h,?rank) , pawn(?f) .
+closedrank(?rank) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h,?rank) , pawn(?g) .
+closedrank(?rank) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h,?rank) , pawn(?h) .
+closedrank(?rank) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h,?rank) , pawn(?d) .
+openrank(?rank) :- row(?a, ?b, ?c, ?d, ?e, ?f, ?g, ?h,?rank), ~closedrank(?rank) .
+
+file(?y) :- col(?one, ?two, ?three, ?four, ?five, ?six, ?seven, ?eight, ?y) .
+closedfile(?file) :- col(?one, ?two, ?three, ?four, ?five, ?six, ?seven, ?eight, ?file) , pawn(?one) .
+closedfile(?file) :- col(?one, ?two, ?three, ?four, ?five, ?six, ?seven, ?eight, ?file) , pawn(?two) .
+closedfile(?file) :- col(?one, ?two, ?three, ?four, ?five, ?six, ?seven, ?eight, ?file) , pawn(?three) .
+closedfile(?file) :- col(?one, ?two, ?three, ?four, ?five, ?six, ?seven, ?eight, ?file) , pawn(?four) .
+closedfile(?file) :- col(?one, ?two, ?three, ?four, ?five, ?six, ?seven, ?eight, ?file) , pawn(?five) .
+closedfile(?file) :- col(?one, ?two, ?three, ?four, ?five, ?six, ?seven, ?eight, ?file) , pawn(?six) .
+closedfile(?file) :- col(?one, ?two, ?three, ?four, ?five, ?six, ?seven, ?eight, ?file) , pawn(?seven) .
+closedfile(?file) :- col(?one, ?two, ?three, ?four, ?five, ?six, ?seven, ?eight, ?file) , pawn(?eight) .
+openfile(?file) :- col(?one, ?two, ?three, ?four, ?five, ?six, ?seven, ?eight, ?file), ~closedfile(?file) .
+
+%----------
+%DIAGONALS
+diag_up(?piece, ?id) :- square(?piece, ?rank, ?file), ?id = ?rank - ?file + 7 . 
+diag_down(?piece, ?id) :- square(?piece, ?rank, ?file), ?id = ?rank + ?file - 2 .
+closed_diag_up(?id) :- diag_up(?piece, ?id), pawn(?piece) .
+closed_diag_down(?id) :- diag_down(?piece, ?id), pawn(?piece) .
+open_diag_up(?id) :- diag_up(_,?id), ~closed_diag_up(?id) .
+open_diag_down(?id) :- diag_down(_,?id), ~closed_diag_down(?id) .
+
+
+
+
+%======== Piece vision (Threat Lines) ========
+% Pawns (Diagonal vision only for threats/attacks)
+vision("P", ?r1, ?f1, ?r2, ?f2) :- square("P", ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 + 1, ?f2 = ?f1 + 1 .
+vision("P", ?r1, ?f1, ?r2, ?f2) :- square("P", ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 + 1, ?f2 = ?f1 - 1 .
+vision("p", ?r1, ?f1, ?r2, ?f2) :- square("p", ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 - 1, ?f2 = ?f1 + 1 .
+vision("p", ?r1, ?f1, ?r2, ?f2) :- square("p", ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 - 1, ?f2 = ?f1 - 1 .
+
+% Bishops
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- bishop(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 - ?f2 = ?r1 - ?f1, ?r1 != ?r2 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- bishop(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 + ?f2 = ?r1 + ?f1, ?r1 != ?r2 .
+
+% Knights
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- knight(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 + 2, ?f2 = ?f1 + 1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- knight(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 + 2, ?f2 = ?f1 - 1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- knight(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 - 2, ?f2 = ?f1 + 1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- knight(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 - 2, ?f2 = ?f1 - 1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- knight(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 + 1, ?f2 = ?f1 + 2 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- knight(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 + 1, ?f2 = ?f1 - 2 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- knight(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 - 1, ?f2 = ?f1 + 2 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- knight(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 - 1, ?f2 = ?f1 - 2 .
+
+% Rooks
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- rook(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r1 = ?r2, ?f1 != ?f2 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- rook(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?f1 = ?f2, ?r1 != ?r2 .
+
+% Queens
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- queen(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r1 = ?r2, ?f1 != ?f2 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- queen(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?f1 = ?f2, ?r1 != ?r2 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- queen(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 - ?f2 = ?r1 - ?f1, ?r1 != ?r2 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- queen(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 + ?f2 = ?r1 + ?f1, ?r1 != ?r2 .
+
+% Kings
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- king(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 + 1, ?f2 = ?f1 + 1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- king(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 + 1, ?f2 = ?f1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- king(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 + 1, ?f2 = ?f1 - 1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- king(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1, ?f2 = ?f1 + 1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- king(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1, ?f2 = ?f1 - 1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- king(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 - 1, ?f2 = ?f1 + 1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- king(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 - 1, ?f2 = ?f1 .
+vision(?p, ?r1, ?f1, ?r2, ?f2) :- king(?p), square(?p, ?r1, ?f1), square(_, ?r2, ?f2), ?r2 = ?r1 - 1, ?f2 = ?f1 - 1 .
+
+
+
+
+
+%===================
+%% BETWEEN Geometry (Used for Blocks, Pins, and Checking Paths)
+
+between(?r1, ?f1, ?r2, ?f2, ?r3, ?f3) :- rank(?r1), file(?f1), rank(?r2), file(?f2), rank(?r3), file(?f3), ?r1 = ?r2, ?r1 = ?r3, ?f1 < ?f3, ?f3 < ?f2 .
+between(?r1, ?f1, ?r2, ?f2, ?r3, ?f3) :- rank(?r1), file(?f1), rank(?r2), file(?f2), rank(?r3), file(?f3), ?r1 = ?r2, ?r1 = ?r3, ?f2 < ?f3, ?f3 < ?f1 .
+between(?r1, ?f1, ?r2, ?f2, ?r3, ?f3) :- rank(?r1), file(?f1), rank(?r2), file(?f2), rank(?r3), file(?f3), ?f1 = ?f2, ?f1 = ?f3, ?r1 < ?r3, ?r3 < ?r2 .
+between(?r1, ?f1, ?r2, ?f2, ?r3, ?f3) :- rank(?r1), file(?f1), rank(?r2), file(?f2), rank(?r3), file(?f3), ?f1 = ?f2, ?f1 = ?f3, ?r2 < ?r3, ?r3 < ?r1 .
+between(?r1, ?f1, ?r2, ?f2, ?r3, ?f3) :- rank(?r1), file(?f1), rank(?r2), file(?f2), rank(?r3), file(?f3), ?r1 - ?f1 = ?r2 - ?f2, ?r1 - ?f1 = ?r3 - ?f3, ?r1 < ?r3, ?r3 < ?r2 .
+between(?r1, ?f1, ?r2, ?f2, ?r3, ?f3) :- rank(?r1), file(?f1), rank(?r2), file(?f2), rank(?r3), file(?f3), ?r1 - ?f1 = ?r2 - ?f2, ?r1 - ?f1 = ?r3 - ?f3, ?r2 < ?r3, ?r3 < ?r1 .
+between(?r1, ?f1, ?r2, ?f2, ?r3, ?f3) :- rank(?r1), file(?f1), rank(?r2), file(?f2), rank(?r3), file(?f3), ?r1 + ?f1 = ?r2 + ?f2, ?r1 + ?f1 = ?r3 + ?f3, ?r1 < ?r3, ?r3 < ?r2 .
+between(?r1, ?f1, ?r2, ?f2, ?r3, ?f3) :- rank(?r1), file(?f1), rank(?r2), file(?f2), rank(?r3), file(?f3), ?r1 + ?f1 = ?r2 + ?f2, ?r1 + ?f1 = ?r3 + ?f3, ?r2 < ?r3, ?r3 < ?r1 .
+
+blocked(?r1, ?f1, ?r2, ?f2) :- square(_, ?r1, ?f1), square(_, ?r2, ?f2), occupied(?r3, ?f3), between(?r1, ?f1, ?r2, ?f2, ?r3, ?f3) .
+
+valid_vision(?piece, ?r1, ?f1, ?r2, ?f2) :- vision(?piece, ?r1, ?f1, ?r2, ?f2), ~blocked(?r1, ?f1, ?r2, ?f2) .
+
+%===================
+%% ATTACKING AND DEFENDING 
+attacks(?attacker, ?r1, ?f1, ?target, ?r2, ?f2) :- valid_vision(?attacker, ?r1, ?f1, ?r2, ?f2), square(?target, ?r2, ?f2), is_white(?attacker), is_black(?target) .
+attacks(?attacker, ?r1, ?f1, ?target, ?r2, ?f2) :- valid_vision(?attacker, ?r1, ?f1, ?r2, ?f2), square(?target, ?r2, ?f2), is_black(?attacker), is_white(?target) .
+defends(?defender, ?r1, ?f1, ?target, ?r2, ?f2) :- valid_vision(?defender, ?r1, ?f1, ?r2, ?f2), square(?target, ?r2, ?f2), is_white(?defender), is_white(?target) .
+defends(?defender, ?r1, ?f1, ?target, ?r2, ?f2) :- valid_vision(?defender, ?r1, ?f1, ?r2, ?f2), square(?target, ?r2, ?f2), is_black(?defender), is_black(?target) .
+
+%===================
+%% THREATS, CHECKS, AND PINS
+threatened_by_black(?r2, ?f2) :- valid_vision(?atk, _, _, ?r2, ?f2), is_black(?atk) .
+threatened_by_white(?r2, ?f2) :- valid_vision(?atk, _, _, ?r2, ?f2), is_white(?atk) .
+
+in_check("w") :- square("K", ?kr, ?kf), threatened_by_black(?kr, ?kf) .
+in_check("b") :- square("k", ?kr, ?kf), threatened_by_white(?kr, ?kf) .
+
+% Pinned Pieces (Between King and Attacker with no other obstructions)
+pinned("w", ?pr, ?pf, ?ar, ?af) :- square("K", ?kr, ?kf), square(?atk, ?ar, ?af), is_black(?atk), slider(?atk), vision(?atk, ?ar, ?af, ?kr, ?kf), square(?p, ?pr, ?pf), is_white(?p), between(?ar, ?af, ?kr, ?kf, ?pr, ?pf), ~blocked(?ar, ?af, ?pr, ?pf), ~blocked(?pr, ?pf, ?kr, ?kf) .
+pinned("b", ?pr, ?pf, ?ar, ?af) :- square("k", ?kr, ?kf), square(?atk, ?ar, ?af), is_white(?atk), slider(?atk), vision(?atk, ?ar, ?af, ?kr, ?kf), square(?p, ?pr, ?pf), is_black(?p), between(?ar, ?af, ?kr, ?kf, ?pr, ?pf), ~blocked(?ar, ?af, ?pr, ?pf), ~blocked(?pr, ?pf, ?kr, ?kf) .
+
+%===================
+%% PSEUDO-LEGAL MOVES (Raw physical movement ignoring King safety)
+
+% Pawn Pushes (Safely bound to rank and file domains)
+pseudo_legal("P", ?r1, ?f1, ?r2, ?f2) :- square("P", ?r1, ?f1), rank(?r2), file(?f2), ?r2 = ?r1 + 1, ?f2 = ?f1, ~occupied(?r2, ?f2) .
+pseudo_legal("P", ?r1, ?f1, ?r2, ?f2) :- square("P", ?r1, ?f1), rank(?r2), file(?f2), ?r1 = 2, ?r2 = 4, ?f2 = ?f1, ~occupied(3, ?f1), ~occupied(4, ?f1) .
+pseudo_legal("p", ?r1, ?f1, ?r2, ?f2) :- square("p", ?r1, ?f1), rank(?r2), file(?f2), ?r2 = ?r1 - 1, ?f2 = ?f1, ~occupied(?r2, ?f2) .
+pseudo_legal("p", ?r1, ?f1, ?r2, ?f2) :- square("p", ?r1, ?f1), rank(?r2), file(?f2), ?r1 = 7, ?r2 = 5, ?f2 = ?f1, ~occupied(6, ?f1), ~occupied(5, ?f1) .
+
+% All pieces EXCEPT pawns: Move to empty square mapped by valid_vision
+pseudo_legal(?p, ?r1, ?f1, ?r2, ?f2) :- valid_vision(?p, ?r1, ?f1, ?r2, ?f2), ~pawn(?p), ~occupied(?r2, ?f2) .
+
+%  All pieces (INCLUDING pawns): Valid Captures
+pseudo_legal(?p, ?r1, ?f1, ?r2, ?f2) :- attacks(?p, ?r1, ?f1, _, ?r2, ?f2) .
+
+%===================
+%% RESOLVING CHECKS (Blocking or Capturing the Attacker)
+resolves_check("w", ?dr, ?df) :- square("K", ?kr, ?kf), square(?atk, ?dr, ?df), is_black(?atk), valid_vision(?atk, ?dr, ?df, ?kr, ?kf) .
+resolves_check("w", ?dr, ?df) :- square("K", ?kr, ?kf), square(?atk, ?ar, ?af), is_black(?atk), slider(?atk), valid_vision(?atk, ?ar, ?af, ?kr, ?kf), between(?ar, ?af, ?kr, ?kf, ?dr, ?df) .
+resolves_check("b", ?dr, ?df) :- square("k", ?kr, ?kf), square(?atk, ?dr, ?df), is_white(?atk), valid_vision(?atk, ?dr, ?df, ?kr, ?kf) .
+resolves_check("b", ?dr, ?df) :- square("k", ?kr, ?kf), square(?atk, ?ar, ?af), is_white(?atk), slider(?atk), valid_vision(?atk, ?ar, ?af, ?kr, ?kf), between(?ar, ?af, ?kr, ?kf, ?dr, ?df) .
+
+%===================
+%% STRICTLY LEGAL MOVES
+
+% King Moves (Cannot walk into check)
+legal_move("K", ?r1, ?f1, ?r2, ?f2) :- 
+    pseudo_legal("K", ?r1, ?f1, ?r2, ?f2),
+    ~threatened_by_black(?r2, ?f2) .
+
+legal_move("k", ?r1, ?f1, ?r2, ?f2) :- pseudo_legal("k", ?r1, ?f1, ?r2, ?f2), ~threatened_by_white(?r2, ?f2) .
+
+%  Normal Moves (Not in check, not pinned)
+legal_move(?p, ?r1, ?f1, ?r2, ?f2) :- pseudo_legal(?p, ?r1, ?f1, ?r2, ?f2), is_white(?p), ?p != "K", ~in_check("w"), ~pinned("w", ?r1, ?f1, _, _) .
+legal_move(?p, ?r1, ?f1, ?r2, ?f2) :- pseudo_legal(?p, ?r1, ?f1, ?r2, ?f2), is_black(?p), ?p != "k", ~in_check("b"), ~pinned("b", ?r1, ?f1, _, _) .
+
+% Pinned Moves (Can only slide along the pin line, or capture the pinner)
+legal_move(?p, ?r1, ?f1, ?r2, ?f2) :- pseudo_legal(?p, ?r1, ?f1, ?r2, ?f2), is_white(?p), ?p != "K", ~in_check("w"), pinned("w", ?r1, ?f1, ?ar, ?af), square("K", ?kr, ?kf), between(?kr, ?kf, ?ar, ?af, ?r2, ?f2) .
+legal_move(?p, ?r1, ?f1, ?r2, ?f2) :- pseudo_legal(?p, ?r1, ?f1, ?r2, ?f2), is_white(?p), ?p != "K", ~in_check("w"), pinned("w", ?r1, ?f1, ?ar, ?af), ?r2 = ?ar, ?f2 = ?af .
+legal_move(?p, ?r1, ?f1, ?r2, ?f2) :- pseudo_legal(?p, ?r1, ?f1, ?r2, ?f2), is_black(?p), ?p != "k", ~in_check("b"), pinned("b", ?r1, ?f1, ?ar, ?af), square("k", ?kr, ?kf), between(?kr, ?kf, ?ar, ?af, ?r2, ?f2) .
+legal_move(?p, ?r1, ?f1, ?r2, ?f2) :- pseudo_legal(?p, ?r1, ?f1, ?r2, ?f2), is_black(?p), ?p != "k", ~in_check("b"), pinned("b", ?r1, ?f1, ?ar, ?af), ?r2 = ?ar, ?f2 = ?af .
+
+%  In Check Moves (Must block or capture the checker. Pinned pieces cannot move to resolve checks).
+legal_move(?p, ?r1, ?f1, ?r2, ?f2) :- pseudo_legal(?p, ?r1, ?f1, ?r2, ?f2), is_white(?p), ?p != "K", in_check("w"), ~pinned("w", ?r1, ?f1, _, _), resolves_check("w", ?r2, ?f2) .
+legal_move(?p, ?r1, ?f1, ?r2, ?f2) :- pseudo_legal(?p, ?r1, ?f1, ?r2, ?f2), is_black(?p), ?p != "k", in_check("b"), ~pinned("b", ?r1, ?f1, _, _), resolves_check("b", ?r2, ?f2) .
+
+
+
+%% ======= PAWN STRUCTURES =======
+
+% Adjacent Files
+adj_file(?f1, ?f2) :- file(?f1), file(?f2), ?f2 = ?f1 + 1 .
+adj_file(?f1, ?f2) :- file(?f1), file(?f2), ?f2 = ?f1 - 1 .
+
+% Theoretical Pawn Attacks (maps squares a pawn controls, even if empty)
+pawn_attack_geom("P", ?r, ?f, ?tr, ?tf) :- rank(?r), file(?f), rank(?tr), file(?tf), ?tr = ?r + 1, ?tf = ?f + 1 .
+pawn_attack_geom("P", ?r, ?f, ?tr, ?tf) :- rank(?r), file(?f), rank(?tr), file(?tf), ?tr = ?r + 1, ?tf = ?f - 1 .
+pawn_attack_geom("p", ?r, ?f, ?tr, ?tf) :- rank(?r), file(?f), rank(?tr), file(?tf), ?tr = ?r - 1, ?tf = ?f + 1 .
+pawn_attack_geom("p", ?r, ?f, ?tr, ?tf) :- rank(?r), file(?f), rank(?tr), file(?tf), ?tr = ?r - 1, ?tf = ?f - 1 .
+
+%% Doubled Pawns
+doubled_pawn(?p, ?r1, ?f) :- square(?p, ?r1, ?f), pawn(?p), square(?p, ?r2, ?f), ?r1 != ?r2 .
+
+%% Passed Pawns
+enemy_pawn_ahead("P", ?r, ?f) :- square("P", ?r, ?f), square("p", ?er, ?f), ?er > ?r .
+enemy_pawn_ahead("P", ?r, ?f) :- square("P", ?r, ?f), square("p", ?er, ?ef), adj_file(?f, ?ef), ?er > ?r .
+enemy_pawn_ahead("p", ?r, ?f) :- square("p", ?r, ?f), square("P", ?er, ?f), ?er < ?r .
+enemy_pawn_ahead("p", ?r, ?f) :- square("p", ?r, ?f), square("P", ?er, ?ef), adj_file(?f, ?ef), ?er < ?r .
+
+passed_pawn(?p, ?r, ?f) :- square(?p, ?r, ?f), pawn(?p), ~enemy_pawn_ahead(?p, ?r, ?f) .
+
+%% Pawn Chains
+pawn_chain_link(?p, ?r1, ?f1, ?r2, ?f2) :- square(?p, ?r1, ?f1), pawn(?p), square(?p, ?r2, ?f2), defends(?p, ?r1, ?f1, ?p, ?r2, ?f2) .
+
+in_pawn_chain(?p, ?r, ?f) :- pawn_chain_link(?p, ?r, ?f, _, _) .
+in_pawn_chain(?p, ?r, ?f) :- pawn_chain_link(?p, _, _, ?r, ?f) .
+
+%% Backward Pawns
+has_adj_pawn_behind_or_eq("P", ?r, ?f) :- square("P", ?r, ?f), square("P", ?ar, ?af), adj_file(?f, ?af), ?ar <= ?r .
+has_adj_pawn_behind_or_eq("p", ?r, ?f) :- square("p", ?r, ?f), square("p", ?ar, ?af), adj_file(?f, ?af), ?ar >= ?r .
+
+backward_pawn(?p, ?r, ?f) :- square(?p, ?r, ?f), pawn(?p), ~has_adj_pawn_behind_or_eq(?p, ?r, ?f) .
+
+%%  Pawn Breaks
+pawn_break_move(?p, ?r1, ?f1, ?r2, ?f2) :- legal_move(?p, ?r1, ?f1, ?r2, ?f2), pawn(?p), pawn_attack_geom(?p, ?r2, ?f2, ?tr, ?tf), square(?ep, ?tr, ?tf), pawn(?ep), ?p != ?ep, in_pawn_chain(?ep, ?tr, ?tf) .
+
+
+
+%%== Threats===
+
+% Define piece values
+val("P", 1) . val("p", 1) .
+val("N", 3) . val("n", 3) .
+val("B", 3) . val("b", 3) .
+val("R", 5) . val("r", 5) .
+val("Q", 9) . val("q", 9) .
+val("K", 99) . val("k", 99) . 
+
+
+% A piece attacks an enemy piece that has a strictly higher point value
+threatening(?atk, ?r1, ?f1, ?tgt, ?r2, ?f2) :- 
+    attacks(?atk, ?r1, ?f1, ?tgt, ?r2, ?f2), 
+    val(?atk, ?v1), 
+    val(?tgt, ?v2), 
+    ?v2 > ?v1 .
+
+% A piece is hanging if it is underattack and not defended
+is_defended(?tgt, ?r, ?f) :- defends(_, _, _, ?tgt, ?r, ?f) .
+
+hanging(?tgt, ?r, ?f) :-
+    attacks(_,_,_, ?tgt, ?r, ?f),
+    ~is_defended(?tgt, ?r, ?f) .
+
+%% King Safety
+% Checking if the king lacks a pawn immediately in front of it.
+pawn_shield("w", ?kr, ?kf) :- square("K", ?kr, ?kf), ?pr = ?kr + 1, square("P", ?pr, ?kf) .
+pawn_shield("b", ?kr, ?kf) :- square("k", ?kr, ?kf), ?pr = ?kr - 1, square("p", ?pr, ?kf) .
+exposed_king(?k, ?kr, ?kf) :- square(?k, ?kr, ?kf), king(?k), is_white(?k), ~pawn_shield("w", ?kr, ?kf) .
+exposed_king(?k, ?kr, ?kf) :- square(?k, ?kr, ?kf), king(?k), is_black(?k), ~pawn_shield("b", ?kr, ?kf) .
+
+%% Active piece
+% a piece is active if it has vision into enemy territory/center.
+
+active_piece(?p, ?r, ?f) :- square(?p, ?r, ?f), ~pawn(?p), is_white(?p), valid_vision(?p, ?r, ?f, ?tr, ?tf), ?tr > 4 .
+active_piece(?p, ?r, ?f) :- square(?p, ?r, ?f), ~pawn(?p), is_black(?p), valid_vision(?p, ?r, ?f, ?tr, ?tf), ?tr < 5 .
+
+
+%% Relative Pins (A piece pinned to a non-King piece of higher value)
+relative_pin("w", ?pr, ?pf, ?ar, ?af) :- 
+    square(?tgt, ?tr, ?tf), is_white(?tgt), ~king(?tgt), 
+    square(?atk, ?ar, ?af), is_black(?atk), slider(?atk), vision(?atk, ?ar, ?af, ?tr, ?tf), 
+    square(?p, ?pr, ?pf), is_white(?p), between(?ar, ?af, ?tr, ?tf, ?pr, ?pf), 
+    ~blocked(?ar, ?af, ?pr, ?pf), ~blocked(?pr, ?pf, ?tr, ?tf), 
+    val(?tgt, ?vtgt), val(?p, ?vp), ?vtgt > ?vp .
+
+relative_pin("b", ?pr, ?pf, ?ar, ?af) :- 
+    square(?tgt, ?tr, ?tf), is_black(?tgt), ~king(?tgt), 
+    square(?atk, ?ar, ?af), is_white(?atk), slider(?atk), vision(?atk, ?ar, ?af, ?tr, ?tf), 
+    square(?p, ?pr, ?pf), is_black(?p), between(?ar, ?af, ?tr, ?tf, ?pr, ?pf), 
+    ~blocked(?ar, ?af, ?pr, ?pf), ~blocked(?pr, ?pf, ?tr, ?tf), 
+    val(?tgt, ?vtgt), val(?p, ?vp), ?vtgt > ?vp .
+
+
+%% Closed Positions
+
+% A Closed Position is one where the center pawns are physically blocked by each other.
+% We check if a White pawn and a Black pawn are face-to-face on the d (4) or e (5) files.
+blocked_center_file(?f) :- 
+    square("P", ?wr, ?f), 
+    square("p", ?br, ?f), 
+    ?br = ?wr + 1, 
+    is_center_sq(_, ?f) .
+
+% The position is fully closed if both the d and e files have blocked center pawns.
+closed_position(?id) :- 
+    pos_id(?id), 
+    blocked_center_file(4), 
+    blocked_center_file(5) .
+
+open_position(?id) :- pos_id(?id), ~closed_position(?id) .
+
+%% Weak Squares (Holes)
+
+can_be_defended_by_wp(?r, ?f) :- rank(?r), file(?f), square("P", ?pr, ?pf), adj_file(?f, ?pf), ?pr < ?r .
+can_be_defended_by_bp(?r, ?f) :- rank(?r), file(?f), square("p", ?pr, ?pf), adj_file(?f, ?pf), ?pr > ?r .
+
+white_weak_square(?r, ?f) :- rank(?r), file(?f), ?r >= 3, ?r <= 4, ~can_be_defended_by_wp(?r, ?f) .
+
+black_weak_square(?r, ?f) :- rank(?r), file(?f), ?r >= 5, ?r <= 6, ~can_be_defended_by_bp(?r, ?f) .
+
+
+
+%%  Paralysed Piece
+% A piece is paralysed if it exists on the board but has no strictly legal moves.
+has_legal_move(?p_str, ?r, ?f) :- legal_move(?p_str, ?r, ?f, _, _) .
+paralysed_piece(?p_str, ?r, ?f) :- square(?p_str, ?r, ?f), is_piece(?p_str), ~has_legal_move(?p_str, ?r, ?f) .
+
+%% Pawn Storm
+% A pawn storm is identified by two or more advanced pawns on the same flank.
+kingside_file(5) . kingside_file(6) . kingside_file(7) . kingside_file(8) .
+queenside_file(1) . queenside_file(2) . queenside_file(3) . queenside_file(4) .
+
+advanced_pawn("w", ?r, ?f) :- square("P", ?r, ?f), ?r >= 5 .
+advanced_pawn("b", ?r, ?f) :- square("p", ?r, ?f), ?r <= 4 .
+
+white_ks_storm(?id) :- advanced_pawn("w", _, ?f1), advanced_pawn("w", _, ?f2), kingside_file(?f1), kingside_file(?f2), ?f1 != ?f2, pos_id(?id) .
+white_qs_storm(?id) :- advanced_pawn("w", _, ?f1), advanced_pawn("w", _, ?f2), queenside_file(?f1), queenside_file(?f2), ?f1 != ?f2, pos_id(?id) .
+black_ks_storm(?id) :- advanced_pawn("b", _, ?f1), advanced_pawn("b", _, ?f2), kingside_file(?f1), kingside_file(?f2), ?f1 != ?f2, pos_id(?id) .
+black_qs_storm(?id) :- advanced_pawn("b", _, ?f1), advanced_pawn("b", _, ?f2), queenside_file(?f1), queenside_file(?f2), ?f1 != ?f2, pos_id(?id) .
+
+pawn_storm(?id) :- white_ks_storm(?id) .
+pawn_storm(?id) :- white_qs_storm(?id) .
+pawn_storm(?id) :- black_ks_storm(?id) .
+pawn_storm(?id) :- black_qs_storm(?id) .
+
+%%  Good vs Bad Bishop
+% Helper: Square Color Geometry
+is_even(2) . is_even(4) . is_even(6) . is_even(8) .
+is_odd(1) . is_odd(3) . is_odd(5) . is_odd(7) .
+
+dark_square_geom(?r, ?f) :- rank(?r), file(?f), is_odd(?r), is_odd(?f) .
+dark_square_geom(?r, ?f) :- rank(?r), file(?f), is_even(?r), is_even(?f) .
+light_square_geom(?r, ?f) :- rank(?r), file(?f), is_odd(?r), is_even(?f) .
+light_square_geom(?r, ?f) :- rank(?r), file(?f), is_even(?r), is_odd(?f) .
+
+% A bad bishop is blocked by its own central pawns stationed on the same color complex.
+bad_bishop(?b, ?br, ?bf) :- square(?b, ?br, ?bf), bishop(?b), is_white(?b), dark_square_geom(?br, ?bf), square("P", ?pr, ?pf), is_center_sq(?pr, ?pf), dark_square_geom(?pr, ?pf) .
+bad_bishop(?b, ?br, ?bf) :- square(?b, ?br, ?bf), bishop(?b), is_white(?b), light_square_geom(?br, ?bf), square("P", ?pr, ?pf), is_center_sq(?pr, ?pf), light_square_geom(?pr, ?pf) .
+bad_bishop(?b, ?br, ?bf) :- square(?b, ?br, ?bf), bishop(?b), is_black(?b), dark_square_geom(?br, ?bf), square("p", ?pr, ?pf), is_center_sq(?pr, ?pf), dark_square_geom(?pr, ?pf) .
+bad_bishop(?b, ?br, ?bf) :- square(?b, ?br, ?bf), bishop(?b), is_black(?b), light_square_geom(?br, ?bf), square("p", ?pr, ?pf), is_center_sq(?pr, ?pf), light_square_geom(?pr, ?pf) .
+
+good_bishop(?b, ?br, ?bf) :- square(?b, ?br, ?bf), bishop(?b), ~bad_bishop(?b, ?br, ?bf) .
+
+%%  isForking 
+% A piece is forking if it attacks two distinct targets simultaneously.
+forks(?atk, ?ar, ?af, ?tgt1, ?tr1, ?tf1, ?tgt2, ?tr2, ?tf2) :-
+    attacks(?atk, ?ar, ?af, ?tgt1, ?tr1, ?tf1),
+    attacks(?atk, ?ar, ?af, ?tgt2, ?tr2, ?tf2),
+    ?tr1 != ?tr2 .
+forks(?atk, ?ar, ?af, ?tgt1, ?tr1, ?tf1, ?tgt2, ?tr2, ?tf2) :-
+    attacks(?atk, ?ar, ?af, ?tgt1, ?tr1, ?tf1),
+    attacks(?atk, ?ar, ?af, ?tgt2, ?tr2, ?tf2),
+    ?tf1 != ?tf2 .
+
+is_forking_target(?atk, ?ar, ?af, ?tgt1, ?tr1, ?tf1) :- forks(?atk, ?ar, ?af, ?tgt1, ?tr1, ?tf1, _, _, _) .
+
+%%  isPinned and isPinning 
+% Unifying both Absolute and Relative Pins into a generic property link
+pin_relation(?pr, ?pf, ?ar, ?af) :- pinned(_, ?pr, ?pf, ?ar, ?af) .
+pin_relation(?pr, ?pf, ?ar, ?af) :- relative_pin(_, ?pr, ?pf, ?ar, ?af) .
+
+is_pinning_prop(?ar, ?af, ?pr, ?pf) :- pin_relation(?pr, ?pf, ?ar, ?af) .
+is_pinned_prop(?pr, ?pf, ?ar, ?af) :- pin_relation(?pr, ?pf, ?ar, ?af) .
+
+
+
+%%% ****** CENTER CONTROL EVALUATION ******
+
+% Non-pawns: Exert control over a center square if they have valid vision to it.
+controls_center(?p_str, ?pr, ?pf, ?cr, ?cf) :-
+    square(?p_str, ?pr, ?pf), 
+    ~pawn(?p_str),
+    is_center_sq(?cr, ?cf), 
+    valid_vision(?p_str, ?pr, ?pf, ?cr, ?cf) .
+
+% Pawns: Exert control over a center square based on their theoretical attack geometry (even if the square is empty).
+controls_center(?p_str, ?pr, ?pf, ?cr, ?cf) :-
+    square(?p_str, ?pr, ?pf), 
+    pawn(?p_str),
+    is_center_sq(?cr, ?cf), 
+    pawn_attack_geom(?p_str, ?pr, ?pf, ?cr, ?cf) .
+
+
+is_center_sq(4, 4) . is_center_sq(4, 5) . is_center_sq(5, 4) . is_center_sq(5, 5) .
+has_center_pawn(?id) :- square(?p_str, ?r, ?f), pawn(?p_str), is_center_sq(?r, ?f), pos_id(?id) .
+open_center(?id) :- pos_id(?id), ~has_center_pawn(?id) .
+
+
+%% ========================================================= ONTOLOGY EXPORT =================================================
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix bp: <http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#> .
+
+%% Property Declarations
+triple(bp:hasPiece, rdf:type, owl:ObjectProperty) .
+triple(bp:onSquare, rdf:type, owl:ObjectProperty) .
+triple(bp:hasSquare, rdf:type, owl:ObjectProperty) .
+triple(bp:hasFile, rdf:type, owl:ObjectProperty) .
+triple(bp:hasRank, rdf:type, owl:ObjectProperty) .
+triple(bp:hasDiagonal, rdf:type, owl:ObjectProperty) .
+triple(bp:isAttacking, rdf:type, owl:ObjectProperty) .
+triple(bp:isDefending, rdf:type, owl:ObjectProperty) .
+triple(bp:legalMove, rdf:type, owl:ObjectProperty) .
+triple(bp:canSee, rdf:type, owl:ObjectProperty) .
+triple(bp:hasActivePiece, rdf:type, owl:ObjectProperty) .
+triple(bp:isEmpty, rdf:type, owl:DatatypeProperty) .
+triple(bp:isForking, rdf:type, owl:ObjectProperty) .
+triple(bp:isPinned, rdf:type, owl:ObjectProperty) .
+triple(bp:isPinning, rdf:type, owl:ObjectProperty) .
+triple(bp:controlsCenterSquare, rdf:type, owl:ObjectProperty) .
+
+% ------- Mappings --------
+file_str(1, "a") . file_str(2, "b") . file_str(3, "c") . file_str(4, "d") .
+file_str(5, "e") . file_str(6, "f") . file_str(7, "g") . file_str(8, "h") .
+
+rank_str(1, "1") . rank_str(2, "2") . rank_str(3, "3") . rank_str(4, "4") .
+rank_str(5, "5") . rank_str(6, "6") . rank_str(7, "7") . rank_str(8, "8") .
+
+diag_str(0, "1") . diag_str(1, "2") . diag_str(2, "3") . diag_str(3, "4") . diag_str(4, "5") .
+diag_str(5, "6") . diag_str(6, "7") . diag_str(7, "8") . diag_str(8, "9") . diag_str(9, "10") .
+diag_str(10, "11") . diag_str(11, "12") . diag_str(12, "13") . diag_str(13, "14") . diag_str(14, "15") .
+
+piece_class("P", bp:Pawn) . piece_class("p", bp:Pawn) .
+piece_class("N", bp:Knight) . piece_class("n", bp:Knight) .
+piece_class("B", bp:Bishop) . piece_class("b", bp:Bishop) .
+piece_class("R", bp:Rook) . piece_class("r", bp:Rook) .
+piece_class("Q", bp:Queen) . piece_class("q", bp:Queen) .
+piece_class("K", bp:King) . piece_class("k", bp:King) .
+
+is_piece("P") . is_piece("p") .
+is_piece("N") . is_piece("n") .
+is_piece("B") . is_piece("b") .
+is_piece("R") . is_piece("r") .
+is_piece("Q") . is_piece("q") .
+is_piece("K") . is_piece("k") .
+
+
+%% Position Instance & Board Links
+triple(?pos_iri, rdf:type, owl:NamedIndividual) :- pos_id(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)) .
+triple(?pos_iri, rdf:type, bp:BoardState) :- pos_id(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)) .
+
+%% Link Position -> file/rank/diagonalNE/diagonalNW/square
+triple(?pos_iri, bp:hasFile, ?file_iri) :- file_str(?f, ?fs), pos_id(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)), ?file_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, "File_", ?id)) .
+triple(?pos_iri, bp:hasRank, ?rank_iri) :- rank_str(?r, ?rs), pos_id(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)), ?rank_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?rs, "Rank_", ?id)) .
+triple(?pos_iri, bp:hasDiagonal, ?diag_iri) :- diag_str(?d, ?ds), pos_id(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNE_", ?ds, "_", ?id)) .
+triple(?pos_iri, bp:hasDiagonal, ?diag_iri) :- diag_str(?d, ?ds), pos_id(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNW_", ?ds, "_", ?id)) .
+triple(?pos_iri, bp:hasSquare, ?square_iri) :- file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)), ?square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)) .
+
+triple(?pos_iri, bp:hasActivePiece, ?piece_iri) :- square(?p_str, ?r, ?f), is_piece(?p_str), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+
+%% Squares
+triple(?square_iri, rdf:type, owl:NamedIndividual) :- file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)) .
+triple(?square_iri, rdf:type, ?square_class_iri) :- file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)), ?square_class_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_Square")) .
+
+%% Files
+triple(?file_iri, rdf:type, owl:NamedIndividual) :- file_str(?f, ?fs), pos_id(?id), ?file_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, "File_", ?id)) .
+triple(?file_iri, rdf:type, ?file_class_iri) :- file_str(?f, ?fs), pos_id(?id), ?file_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, "File_", ?id)), ?file_class_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, "File_Class")) .
+triple(?file_iri, rdf:type, bp:OpenFile) :- openfile(?f), file_str(?f, ?fs), pos_id(?id), ?file_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, "File_", ?id)) .
+triple(?file_iri, rdf:type, bp:ClosedFile) :- closedfile(?f), file_str(?f, ?fs), pos_id(?id), ?file_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, "File_", ?id)) .
+triple(?file_iri, bp:hasSquare, ?square_iri) :- file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?file_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, "File_", ?id)), ?square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)) .
+
+%% Ranks
+triple(?rank_iri, rdf:type, owl:NamedIndividual) :- rank_str(?r, ?rs), pos_id(?id), ?rank_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?rs, "Rank_", ?id)) .
+triple(?rank_iri, rdf:type, ?rank_class_iri) :- rank_str(?r, ?rs), pos_id(?id), ?rank_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?rs, "Rank_", ?id)), ?rank_class_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?rs, "Rank_Class")) .
+triple(?rank_iri, rdf:type, bp:OpenRank) :- openrank(?r), rank_str(?r, ?rs), pos_id(?id), ?rank_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?rs, "Rank_", ?id)) .
+triple(?rank_iri, rdf:type, bp:ClosedRank) :- closedrank(?r), rank_str(?r, ?rs), pos_id(?id), ?rank_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?rs, "Rank_", ?id)) .
+triple(?rank_iri, bp:hasSquare, ?square_iri) :- file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?rank_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?rs, "Rank_", ?id)), ?square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)) .
+
+%% Diagonals
+% NE Diagonals
+triple(?diag_iri, rdf:type, owl:NamedIndividual) :- diag_str(?d, ?ds), pos_id(?id), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNE_", ?ds, "_", ?id)) .
+triple(?diag_iri, rdf:type, ?diag_class_iri) :- diag_str(?d, ?ds), pos_id(?id), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNE_", ?ds, "_", ?id)), ?diag_class_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNE_", ?ds, "_Class")) .
+triple(?diag_iri, rdf:type, bp:OpenDiagonal) :- open_diag_up(?d), diag_str(?d, ?ds), pos_id(?id), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNE_", ?ds, "_", ?id)) .
+triple(?diag_iri, rdf:type, bp:ClosedDiagonal) :- closed_diag_up(?d), diag_str(?d, ?ds), pos_id(?id), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNE_", ?ds, "_", ?id)) .
+triple(?diag_iri, bp:hasSquare, ?square_iri) :- file_str(?f, ?fs), rank_str(?r, ?rs), ?d = ?r - ?f + 7, diag_str(?d, ?ds), pos_id(?id), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNE_", ?ds, "_", ?id)), ?square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)) .
+
+% NW Diagonals
+triple(?diag_iri, rdf:type, owl:NamedIndividual) :- diag_str(?d, ?ds), pos_id(?id), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNW_", ?ds, "_", ?id)) .
+triple(?diag_iri, rdf:type, ?diag_class_iri) :- diag_str(?d, ?ds), pos_id(?id), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNW_", ?ds, "_", ?id)), ?diag_class_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNW_", ?ds, "_Class")) .
+triple(?diag_iri, rdf:type, bp:OpenDiagonal) :- open_diag_down(?d), diag_str(?d, ?ds), pos_id(?id), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNW_", ?ds, "_", ?id)) .
+triple(?diag_iri, rdf:type, bp:ClosedDiagonal) :- closed_diag_down(?d), diag_str(?d, ?ds), pos_id(?id), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNW_", ?ds, "_", ?id)) .
+triple(?diag_iri, bp:hasSquare, ?square_iri) :- file_str(?f, ?fs), rank_str(?r, ?rs), ?d = ?r + ?f - 2, diag_str(?d, ?ds), pos_id(?id), ?diag_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#diagNW_", ?ds, "_", ?id)), ?square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)) .
+
+%% Pieces
+triple(?piece_iri, rdf:type, owl:NamedIndividual) :- square(?p_str, ?r, ?f), is_piece(?p_str), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+triple(?piece_iri, rdf:type, ?class) :- square(?p_str, ?r, ?f), piece_class(?p_str, ?class), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+triple(?piece_iri, rdf:type, bp:WhitePiece) :- square(?p_str, ?r, ?f), is_white(?p_str), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+triple(?piece_iri, rdf:type, bp:BlackPiece) :- square(?p_str, ?r, ?f), is_black(?p_str), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+triple(?square_iri, bp:hasPiece, ?piece_iri) :- square(?p_str, ?r, ?f), is_piece(?p_str), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+triple(?piece_iri, bp:onSquare, ?square_iri) :- square(?p_str, ?r, ?f), is_piece(?p_str), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)), ?square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)) .
+
+%%  Empty Squares
+triple(?square_iri, bp:isEmpty, "true"^^xsd:boolean) :- square(".", ?r, ?f), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)) .
+
+%% Attacking / Defending
+triple(?p1_iri, bp:isAttacking, ?p2_iri) :- attacks(?atk, ?r1, ?f1, ?tgt, ?r2, ?f2), file_str(?f1, ?fs1), rank_str(?r1, ?rs1), file_str(?f2, ?fs2), rank_str(?r2, ?rs2), pos_id(?id), ?p1_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?atk, "_", ?fs1, ?rs1, "_", ?id)), ?p2_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?tgt, "_", ?fs2, ?rs2, "_", ?id)) .
+triple(?p1_iri, bp:isDefending, ?p2_iri) :- defends(?def, ?r1, ?f1, ?tgt, ?r2, ?f2), file_str(?f1, ?fs1), rank_str(?r1, ?rs1), file_str(?f2, ?fs2), rank_str(?r2, ?rs2), pos_id(?id), ?p1_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?def, "_", ?fs1, ?rs1, "_", ?id)), ?p2_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?tgt, "_", ?fs2, ?rs2, "_", ?id)) .
+
+%%  Vision & Legal Moves
+triple(?piece_iri, bp:canSee, ?target_square_iri) :- vision(?p_str, ?r1, ?f1, ?r2, ?f2), file_str(?f1, ?fs1), rank_str(?r1, ?rs1), file_str(?f2, ?fs2), rank_str(?r2, ?rs2), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs1, ?rs1, "_", ?id)), ?target_square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs2, ?rs2, "_", ?id)) .
+triple(?piece_iri, bp:legalMove, ?target_square_iri) :- legal_move(?p_str, ?r1, ?f1, ?r2, ?f2), file_str(?f1, ?fs1), rank_str(?r1, ?rs1), file_str(?f2, ?fs2), rank_str(?r2, ?rs2), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs1, ?rs1, "_", ?id)), ?target_square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs2, ?rs2, "_", ?id)) .
+
+%% Open center
+
+triple(?pos_iri, rdf:type, bp:OpenCenter) :- open_center(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)) .
+
+%%  Pawn structure
+% Doubled Pawn
+triple(?piece_iri, rdf:type, bp:DoubledPawn) :- doubled_pawn(?p_str, ?r, ?f), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+
+% Passed Pawn 
+triple(?piece_iri, rdf:type, bp:PassedPawn) :- passed_pawn(?p_str, ?r, ?f), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+
+% Backward Pawn
+triple(?piece_iri, rdf:type, bp:BackwardPawn) :- backward_pawn(?p_str, ?r, ?f), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+
+% Pawn Chain 
+triple(?piece_iri, rdf:type, bp:PawnChainMember) :- in_pawn_chain(?p_str, ?r, ?f), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+
+% Pawn Break Move (Object Property linking the moving pawn to the target square)
+triple(?piece_iri, bp:isPawnBreakMove, ?target_square_iri) :- pawn_break_move(?p_str, ?r1, ?f1, ?r2, ?f2), file_str(?f1, ?fs1), rank_str(?r1, ?rs1), file_str(?f2, ?fs2), rank_str(?r2, ?rs2), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs1, ?rs1, "_", ?id)), ?target_square_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs2, ?rs2, "_", ?id)) .
+
+%%  Piece threatening higher value piece
+triple(?p1_iri, bp:threatening, ?p2_iri) :- 
+    threatening(?atk, ?r1, ?f1, ?tgt, ?r2, ?f2), 
+    file_str(?f1, ?fs1), rank_str(?r1, ?rs1), 
+    file_str(?f2, ?fs2), rank_str(?r2, ?rs2), 
+    pos_id(?id), 
+    ?p1_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?atk, "_", ?fs1, ?rs1, "_", ?id)), 
+    ?p2_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?tgt, "_", ?fs2, ?rs2, "_", ?id)) .
+
+%%  Hanging Piece
+    triple(?piece_iri, rdf:type, bp:HangingPiece) :- hanging(?tgt, ?r, ?f), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?tgt, "_", ?fs, ?rs, "_", ?id)) .
+
+%%  Exposed King
+triple(?piece_iri, rdf:type, bp:ExposedKing) :- exposed_king(?p, ?r, ?f), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p, "_", ?fs, ?rs, "_", ?id)) .
+
+%%  Active Piece
+triple(?piece_iri, rdf:type, bp:ActivePiece) :- active_piece(?p, ?r, ?f), file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p, "_", ?fs, ?rs, "_", ?id)) .
+
+%%  Absolute Pinned Piece
+triple(?piece_iri, rdf:type, bp:AbsolutePinnedPiece) :- 
+    pinned(_, ?r, ?f, _, _), square(?p, ?r, ?f), 
+    file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), 
+    ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p, "_", ?fs, ?rs, "_", ?id)) .
+
+%%  Pinned Piece
+triple(?piece_iri, rdf:type, bp:PinnedPiece) :- 
+    relative_pin(_, ?r, ?f, _, _), square(?p, ?r, ?f), 
+    file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), 
+    ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p, "_", ?fs, ?rs, "_", ?id)) .
+
+
+%%  Open and Closed Positions Export
+triple(?pos_iri, rdf:type, bp:OpenPosition) :- open_position(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)) .
+
+triple(?pos_iri, rdf:type, bp:ClosedPosition) :- closed_position(?id), ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)) .
+
+
+%% Weak Squares 
+triple(?sq_iri, rdf:type, bp:WeakSquare) :- 
+    white_weak_square(?r, ?f), 
+    file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), 
+    ?sq_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)) .
+
+triple(?sq_iri, rdf:type, bp:WeakSquare) :- 
+    black_weak_square(?r, ?f), 
+    file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), 
+    ?sq_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?fs, ?rs, "_", ?id)) .
+
+%% Paralysed Piece
+triple(?piece_iri, rdf:type, bp:ParalysedPiece) :- 
+    paralysed_piece(?p_str, ?r, ?f), 
+    file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), 
+    ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+
+%% Pawn Storm Position 
+triple(?pos_iri, rdf:type, bp:PawnStorm) :- 
+    pawn_storm(?id), 
+    ?pos_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Position_", ?id)) .
+
+%%  Good and Bad Bishop
+triple(?piece_iri, rdf:type, bp:GoodBishop) :- 
+    good_bishop(?p_str, ?r, ?f), 
+    file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), 
+    ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+
+triple(?piece_iri, rdf:type, bp:BadBishop) :- 
+    bad_bishop(?p_str, ?r, ?f), 
+    file_str(?f, ?fs), rank_str(?r, ?rs), pos_id(?id), 
+    ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?fs, ?rs, "_", ?id)) .
+
+%% isForking Object Property  
+triple(?atk_iri, bp:isForking, ?tgt_iri) :- 
+    is_forking_target(?atk, ?ar, ?af, ?tgt, ?tr, ?tf), 
+    file_str(?af, ?afs), rank_str(?ar, ?ars), 
+    file_str(?tf, ?tfs), rank_str(?tr, ?trs), pos_id(?id), 
+    ?atk_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?atk, "_", ?afs, ?ars, "_", ?id)), 
+    ?tgt_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?tgt, "_", ?tfs, ?trs, "_", ?id)) .
+
+%%  isPinned and isPinning Object Properties  
+triple(?pinned_iri, bp:isPinned, ?pinner_iri) :- 
+    is_pinned_prop(?pr, ?pf, ?ar, ?af), 
+    square(?p, ?pr, ?pf), square(?atk, ?ar, ?af),
+    file_str(?pf, ?pfs), rank_str(?pr, ?prs), 
+    file_str(?af, ?afs), rank_str(?ar, ?ars), pos_id(?id), 
+    ?pinned_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p, "_", ?pfs, ?prs, "_", ?id)),
+    ?pinner_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?atk, "_", ?afs, ?ars, "_", ?id)) .
+
+triple(?pinner_iri, bp:isPinning, ?pinned_iri) :- 
+    is_pinning_prop(?ar, ?af, ?pr, ?pf), 
+    square(?p, ?pr, ?pf), square(?atk, ?ar, ?af),
+    file_str(?pf, ?pfs), rank_str(?pr, ?prs), 
+    file_str(?af, ?afs), rank_str(?ar, ?ars), pos_id(?id), 
+    ?pinner_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?atk, "_", ?afs, ?ars, "_", ?id)),
+    ?pinned_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p, "_", ?pfs, ?prs, "_", ?id)) .
+
+
+%%  Center Control Object Property 
+% Links the piece to the specific center square it controls
+triple(?piece_iri, bp:controlsCenterSquare, ?sq_iri) :-
+    controls_center(?p_str, ?pr, ?pf, ?cr, ?cf),
+    file_str(?pf, ?pfs), rank_str(?pr, ?prs),
+    file_str(?cf, ?cfs), rank_str(?cr, ?crs), pos_id(?id),
+    ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?pfs, ?prs, "_", ?id)),
+    ?sq_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#", ?cfs, ?crs, "_", ?id)) .
+
+%%  Center Controlling Piece Class 
+% Classifies any piece that controls at least one center square
+triple(?piece_iri, rdf:type, bp:CenterControllingPiece) :-
+    controls_center(?p_str, ?pr, ?pf, _, _),
+    file_str(?pf, ?pfs), rank_str(?pr, ?prs), pos_id(?id),
+    ?piece_iri = IRI(CONCAT("http://www.semanticweb.org/dawid/ontologies/2026/1/Bachelor_Project#Piece_", ?p_str, "_", ?pfs, ?prs, "_", ?id)) .
+
+
+%% Export
+@export triple :- ntriples{resource="board_state_instances.nt"} .
